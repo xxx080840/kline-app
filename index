@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>台股 K 棒走圖練習與模擬交易系統</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Google Fonts: Noto Sans TC 與 JetBrains Mono (等寬數字字體) -->
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #0b0e14;
+            color: #e2e8f0;
+            user-select: none;
+        }
+        .font-mono-num {
+            font-family: 'JetBrains Mono', monospace;
+            font-variant-numeric: tabular-nums;
+        }
+        /* 自訂捲軸樣式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #131722;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #2a2e39;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #434651;
+        }
+        /* 時間軸滑桿樣式 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            background: #1e222d;
+            height: 6px;
+            border-radius: 3px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            border: 2px solid #ffffff;
+        }
+        /* 日期選擇器深色模式修正 */
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden">
+
+    <!-- 頂部導覽與股票/日期設定列 -->
+    <header class="bg-[#131722] border-b border-[#2a2e39] px-4 py-3 shadow-md">
+        <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+            <!-- 標題與 Logo -->
+            <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-emerald-500 flex items-center justify-center font-bold text-white shadow">
+                    K
+                </div>
+                <div>
+                    <h1 class="text-base md:text-lg font-bold tracking-wide text-white">台股 K 棒走圖實戰訓練室</h1>
+                    <p class="text-[11px] text-slate-400 hidden sm:block">盲測走圖 · 歷史回看 · 精準成本損益試算</p>
+                </div>
+            </div>
+
+            <!-- 股票代號與區間設定表單 -->
+            <div class="flex flex-wrap items-center gap-2 sm:gap-3 text-sm">
+                <!-- 股票代號輸入與快速選擇 -->
+                <div class="flex items-center bg-[#1e222d] border border-[#2a2e39] rounded-lg px-2.5 py-1.5">
+                    <label for="stockCodeInput" class="text-slate-400 text-xs mr-2 whitespace-nowrap">股號</label>
+                    <input type="text" id="stockCodeInput" value="2330" placeholder="如 2330" maxlength="10"
+                        class="w-20 bg-transparent text-white font-mono-num font-bold focus:outline-none uppercase">
+                    <select id="presetStockSelect" class="bg-[#131722] text-xs text-slate-300 border border-[#2a2e39] rounded px-1.5 py-0.5 ml-1 focus:outline-none cursor-pointer">
+                        <option value="2330">2330 台積電</option>
+                        <option value="2454">2454 聯發科</option>
+                        <option value="2327">2327 國巨</option>
+                        <option value="2408">2408 南亞科</option>
+                        <option value="2603">2603 長榮</option>
+                        <option value="0050">0050 元大台灣50</option>
+                    </select>
+                </div>
+
+                <!-- 起始與結束日期 -->
+                <div class="flex items-center bg-[#1e222d] border border-[#2a2e39] rounded-lg px-2.5 py-1.5 gap-2">
+                    <span class="text-slate-400 text-xs whitespace-nowrap">區間</span>
+                    <input type="date" id="startDateInput" value="2025-01-02"
+                        class="bg-transparent text-white font-mono-num text-xs focus:outline-none">
+                    <span class="text-slate-500">~</span>
+                    <input type="date" id="endDateInput" value="2025-12-31"
+                        class="bg-transparent text-white font-mono-num text-xs focus:outline-none">
+                </div>
+
+                <!-- 載入/套用按鈕 -->
+                <button id="loadDataBtn"
+                    class="bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-medium px-3.5 py-1.5 rounded-lg transition shadow flex items-center gap-1.5 cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    <span>載入走圖</span>
+                </button>
+
+                <!-- 匯入自訂 CSV/JSON -->
+                <button id="openImportModalBtn"
+                    class="bg-[#1e222d] hover:bg-[#2a2e39] text-slate-300 border border-[#2a2e39] font-medium px-3 py-1.5 rounded-lg transition text-xs cursor-pointer">
+                    匯入數據
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 訊息提示橫幅 (取代 alert) -->
+    <div id="toastBanner" class="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 hidden transition-all duration-300">
+        <div id="toastContent" class="px-4 py-2.5 rounded-lg shadow-xl border text-sm font-medium flex items-center gap-2"></div>
+    </div>
+
+    <!-- 主工作區：左側 K 線圖表 + 右側買賣交易面板 -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto p-3 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+        <!-- 左側：K 線看盤與歷史回看區 (佔 8 欄) -->
+        <section class="lg:col-span-8 flex flex-col bg-[#131722] border border-[#2a2e39] rounded-xl overflow-hidden shadow-lg">
+            
+            <!-- 頂部 OHLCV 即時資訊與均線開關列 -->
+            <div class="px-4 py-2.5 bg-[#181c27] border-b border-[#2a2e39] flex flex-wrap items-center justify-between gap-2 text-xs">
+                <!-- 股票名稱與懸停 K 棒資訊 -->
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono-num">
+                    <span id="displayStockTitle" class="text-sm font-bold text-white font-sans">2330 台積電</span>
+                    <span class="text-slate-400">日期: <strong id="infoDate" class="text-slate-200">--</strong></span>
+                    <span class="text-slate-400">開: <strong id="infoOpen" class="text-slate-200">--</strong></span>
+                    <span class="text-slate-400">高: <strong id="infoHigh" class="text-slate-200">--</strong></span>
+                    <span class="text-slate-400">低: <strong id="infoLow" class="text-slate-200">--</strong></span>
+                    <span class="text-slate-400">收: <strong id="infoClose" class="text-slate-200">--</strong></span>
+                    <span class="text-slate-400">漲跌: <strong id="infoChange" class="text-slate-200">--</strong></span>
+                    <span class="text-slate-400">量: <strong id="infoVol" class="text-slate-200">--</strong></span>
+                </div>
+
+                <!-- 均線開關 -->
+                <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" id="toggleMA5" checked class="accent-amber-400 rounded">
+                        <span class="text-amber-400 font-mono-num">5MA</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" id="toggleMA10" checked class="accent-sky-400 rounded">
+                        <span class="text-sky-400 font-mono-num">10MA</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" id="toggleMA20" checked class="accent-purple-400 rounded">
+                        <span class="text-purple-400 font-mono-num">20MA</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Canvas 繪圖容器 -->
+            <div id="chartContainer" class="relative w-full h-[380px] sm:h-[450px] md:h-[490px] bg-[#0f131a] cursor-crosshair">
+                <canvas id="klineCanvas" class="block w-full h-full"></canvas>
+                <!-- 操作提示浮標 -->
+                <div class="absolute bottom-2 left-3 text-[11px] text-slate-500 pointer-events-none bg-[#0f131a]/80 px-2 py-0.5 rounded">
+                    滾輪縮放 · 按住左鍵拖曳回看歷史 K 棒 · 鍵盤 ← / → 單步走圖
+                </div>
+            </div>
+
+            <!-- 歷史回看時間軸滑桿 -->
+            <div class="px-4 py-2 bg-[#181c27] border-t border-[#2a2e39] flex items-center gap-3">
+                <span class="text-xs text-slate-400 whitespace-nowrap">歷史視窗回看</span>
+                <input type="range" id="historyScrollSlider" min="0" max="0" value="0" class="flex-1">
+                <button id="jumpToLatestBtn" class="text-xs bg-[#2a2e39] hover:bg-slate-600 text-slate-200 px-2.5 py-1 rounded transition whitespace-nowrap cursor-pointer">
+                    回到最新 K 棒
+                </button>
+            </div>
+
+            <!-- 走圖播放控制列 -->
+            <div class="p-3 bg-[#131722] border-t border-[#2a2e39] flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <button id="prevBarBtn" title="上一根 K 棒 (鍵盤左鍵)"
+                        class="bg-[#1e222d] hover:bg-[#2a2e39] active:scale-95 text-slate-200 border border-[#2a2e39] px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1 cursor-pointer">
+                        <span>◀ 上一根</span>
+                    </button>
+
+                    <button id="nextBarBtn" title="下一根 K 棒 (鍵盤右鍵)"
+                        class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow flex items-center gap-1.5 cursor-pointer">
+                        <span>下一根 K 棒 ▶</span>
+                    </button>
+
+                    <button id="autoPlayBtn"
+                        class="bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/40 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center gap-1.5 cursor-pointer">
+                        <span id="autoPlayIcon">▶</span>
+                        <span id="autoPlayText">自動走圖</span>
+                    </button>
+
+                    <select id="playSpeedSelect" class="bg-[#1e222d] text-xs text-slate-300 border border-[#2a2e39] rounded-lg px-2 py-2 focus:outline-none cursor-pointer">
+                        <option value="1200">慢速 (1.2秒)</option>
+                        <option value="700" selected>中速 (0.7秒)</option>
+                        <option value="300">快速 (0.3秒)</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-slate-400 font-mono-num">
+                        進度: <strong id="progressText" class="text-white">0 / 0</strong> 根
+                    </span>
+                    <button id="resetSimBtn"
+                        class="bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border border-rose-500/30 px-3 py-2 rounded-lg text-xs font-medium transition cursor-pointer">
+                        重置練習
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右側：買進/賣出定價下單與損益精算區 (佔 4 欄) -->
+        <section class="lg:col-span-4 flex flex-col gap-4">
+            
+            <!-- 買賣定價下單卡片 -->
+            <div class="bg-[#131722] border border-[#2a2e39] rounded-xl p-4 shadow-lg">
+                <div class="flex items-center justify-between border-b border-[#2a2e39] pb-2.5 mb-3">
+                    <h2 class="text-base font-bold text-white flex items-center gap-2">
+                        <span class="w-2 h-5 bg-blue-500 rounded-sm"></span>
+                        模擬買賣定價下單
+                    </h2>
+                    <span id="currentTradeDateBadge" class="text-xs font-mono-num bg-[#1e222d] text-slate-300 px-2 py-0.5 rounded border border-[#2a2e39]">
+                        ----/--/--
+                    </span>
+                </div>
+
+                <!-- 交易參數設定 (手續費折數 / 證交稅) -->
+                <div class="grid grid-cols-2 gap-2.5 mb-3 bg-[#181c27] p-2.5 rounded-lg border border-[#2a2e39] text-xs">
+                    <div>
+                        <label class="text-slate-400 block mb-1">手續費折數 (0.1425%)</label>
+                        <div class="flex items-center gap-1">
+                            <input type="number" id="feeDiscountInput" value="2.8" step="0.1" min="0.1" max="10"
+                                class="w-full bg-[#0f131a] border border-[#2a2e39] rounded px-2 py-1 text-white font-mono-num focus:border-blue-500 focus:outline-none">
+                            <span class="text-slate-400 whitespace-nowrap">折</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-slate-400 block mb-1">證交稅率 (賣出課徵)</label>
+                        <select id="taxRateSelect" class="w-full bg-[#0f131a] border border-[#2a2e39] rounded px-2 py-1 text-white font-mono-num focus:border-blue-500 focus:outline-none">
+                            <option value="0.003">0.3% (一般股票)</option>
+                            <option value="0.001">0.1% (ETF)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 定價與張數輸入欄位 -->
+                <div class="space-y-3">
+                    <!-- 委託定價欄 -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label for="orderPriceInput" class="text-xs text-slate-300 font-medium">買進 / 賣出定價 (元)</label>
+                            <div class="flex gap-1 text-[11px]">
+                                <button type="button" id="setOpenPriceBtn" class="px-1.5 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-slate-300 rounded cursor-pointer">開盤</button>
+                                <button type="button" id="setClosePriceBtn" class="px-1.5 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-blue-400 rounded cursor-pointer">收盤</button>
+                                <button type="button" id="setHighPriceBtn" class="px-1.5 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-red-400 rounded cursor-pointer">最高</button>
+                                <button type="button" id="setLowPriceBtn" class="px-1.5 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-emerald-400 rounded cursor-pointer">最低</button>
+                            </div>
+                        </div>
+                        <div class="relative flex items-center">
+                            <input type="number" id="orderPriceInput" step="0.05"
+                                class="w-full bg-[#0f131a] border border-[#2a2e39] focus:border-blue-500 rounded-lg px-3 py-2 text-lg font-bold font-mono-num text-white focus:outline-none">
+                            <span id="priceRangeHint" class="absolute right-3 text-[11px] text-slate-400 font-mono-num">
+                                區間: -- ~ --
+                            </span>
+                        </div>
+                        <div class="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                            <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                                <input type="checkbox" id="strictRangeCheck" checked class="accent-blue-500 rounded">
+                                <span>嚴格檢核定價需介於當日高低點之間</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 委託張數欄 -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label for="orderLotsInput" class="text-xs text-slate-300 font-medium">交易張數 (1 張 = 1,000 股)</label>
+                            <div class="flex gap-1 text-[11px]">
+                                <button type="button" data-lots="1" class="quick-lot-btn px-2 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-slate-300 rounded cursor-pointer">1張</button>
+                                <button type="button" data-lots="2" class="quick-lot-btn px-2 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-slate-300 rounded cursor-pointer">2張</button>
+                                <button type="button" data-lots="5" class="quick-lot-btn px-2 py-0.5 bg-[#1e222d] hover:bg-[#2a2e39] text-slate-300 rounded cursor-pointer">5張</button>
+                                <button type="button" id="sellAllLotsBtn" class="px-2 py-0.5 bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-400 border border-emerald-700/40 rounded cursor-pointer">全數賣出</button>
+                            </div>
+                        </div>
+                        <input type="number" id="orderLotsInput" value="1" min="1" step="1"
+                            class="w-full bg-[#0f131a] border border-[#2a2e39] focus:border-blue-500 rounded-lg px-3 py-2 text-lg font-bold font-mono-num text-white focus:outline-none">
+                    </div>
+
+                    <!-- 即時買賣金額試算預覽框 -->
+                    <div class="bg-[#181c27] border border-[#2a2e39] rounded-lg p-3 space-y-1.5 text-xs">
+                        <div class="flex justify-between text-slate-400">
+                            <span>成交總股數：</span>
+                            <span id="calcShares" class="font-mono-num text-slate-200">1,000 股</span>
+                        </div>
+                        <div class="flex justify-between text-slate-400">
+                            <span>買進預估總支出 (含手續費)：</span>
+                            <span id="calcBuyTotal" class="font-mono-num font-bold text-red-400">$0</span>
+                        </div>
+                        <div class="flex justify-between text-slate-400">
+                            <span>賣出預估實拿金額 (扣費與稅)：</span>
+                            <span id="calcSellNet" class="font-mono-num font-bold text-emerald-400">$0</span>
+                        </div>
+                        <div class="border-t border-[#2a2e39] pt-1.5 flex justify-between items-center">
+                            <span class="text-slate-300 font-medium">若以此價賣出庫存預估損益：</span>
+                            <span id="calcEstProfit" class="font-mono-num font-bold text-sm text-slate-300">$0 (0.00%)</span>
+                        </div>
+                    </div>
+
+                    <!-- 買進與賣出執行按鈕 (台股紅買綠賣) -->
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <button id="buyBtn"
+                            class="bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-bold py-3 rounded-xl shadow-lg shadow-red-950/40 transition flex flex-col items-center justify-center cursor-pointer">
+                            <span class="text-base">買進 (BUY)</span>
+                            <span class="text-[11px] font-normal opacity-85">建立多單 / 加碼</span>
+                        </button>
+                        <button id="sellBtn"
+                            class="bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-950/40 transition flex flex-col items-center justify-center cursor-pointer">
+                            <span class="text-base">賣出 (SELL)</span>
+                            <span class="text-[11px] font-normal opacity-85">平倉獲利 / 停損</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 帳戶部位與即時損益統計卡片 -->
+            <div class="bg-[#131722] border border-[#2a2e39] rounded-xl p-4 shadow-lg flex-1 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-white flex items-center gap-2 border-b border-[#2a2e39] pb-2.5 mb-3">
+                        <span class="w-2 h-5 bg-amber-500 rounded-sm"></span>
+                        目前部位與損益精算
+                    </h2>
+
+                    <div class="grid grid-cols-2 gap-2.5 text-xs">
+                        <div class="bg-[#181c27] p-2.5 rounded-lg border border-[#2a2e39]">
+                            <span class="text-slate-400 block">持有庫存張數</span>
+                            <strong id="posLots" class="text-lg font-mono-num text-white mt-0.5 block">0 張</strong>
+                        </div>
+                        <div class="bg-[#181c27] p-2.5 rounded-lg border border-[#2a2e39]">
+                            <span class="text-slate-400 block">平均持有成本 (含費)</span>
+                            <strong id="posAvgCost" class="text-lg font-mono-num text-amber-400 mt-0.5 block">0.00</strong>
+                        </div>
+                        <div class="bg-[#181c27] p-2.5 rounded-lg border border-[#2a2e39]">
+                            <span class="text-slate-400 block">未實現浮動損益</span>
+                            <strong id="unrealizedPnL" class="text-base font-mono-num text-slate-200 mt-0.5 block">$0 (0.00%)</strong>
+                        </div>
+                        <div class="bg-[#181c27] p-2.5 rounded-lg border border-[#2a2e39]">
+                            <span class="text-slate-400 block">已實現累積淨損益</span>
+                            <strong id="realizedPnL" class="text-base font-mono-num text-slate-200 mt-0.5 block">$0</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 總損益結算橫幅 -->
+                <div class="mt-3 bg-[#0f131a] border border-[#2a2e39] rounded-lg p-3 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs text-slate-400 block">總淨損益 (已實現 + 未實現)</span>
+                        <span class="text-[11px] text-slate-500">已扣除買賣手續費與證交稅</span>
+                    </div>
+                    <div id="totalPnL" class="text-xl font-bold font-mono-num text-white">$0</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 下方：交易明細紀錄表 (全寬 12 欄) -->
+        <section class="lg:col-span-12 bg-[#131722] border border-[#2a2e39] rounded-xl overflow-hidden shadow-lg">
+            <div class="px-4 py-3 bg-[#181c27] border-b border-[#2a2e39] flex items-center justify-between">
+                <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <span>📋 模擬交易明細與損益對帳單</span>
+                    <span id="tradeCountBadge" class="bg-blue-600/20 text-blue-400 text-xs px-2 py-0.5 rounded-full font-mono-num">0 筆</span>
+                </h3>
+                <span class="text-xs text-slate-400">圖表上同步標記 <strong class="text-red-400">B (買進)</strong> 與 <strong class="text-emerald-400">S (賣出)</strong> 點位</span>
+            </div>
+            <div class="overflow-x-auto max-h-60">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-[#0f131a] text-slate-400 border-b border-[#2a2e39] font-medium">
+                            <th class="py-2.5 px-4">筆數</th>
+                            <th class="py-2.5 px-4">交易日期</th>
+                            <th class="py-2.5 px-4">動作</th>
+                            <th class="py-2.5 px-4 text-right">成交定價</th>
+                            <th class="py-2.5 px-4 text-right">張數</th>
+                            <th class="py-2.5 px-4 text-right">成交價金</th>
+                            <th class="py-2.5 px-4 text-right">手續費</th>
+                            <th class="py-2.5 px-4 text-right">證交稅</th>
+                            <th class="py-2.5 px-4 text-right">收付總金額</th>
+                            <th class="py-2.5 px-4 text-right">單筆已實現損益</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeHistoryBody" class="divide-y divide-[#1e222d] font-mono-num">
+                        <tr>
+                            <td colspan="10" class="py-6 text-center text-slate-500 font-sans">尚無交易紀錄，請於上方設定價格與張數後點擊「買進」或「賣出」</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- 自訂數據匯入彈窗 -->
+    <div id="importModal" class="fixed inset-0 bg-black/75 z-50 hidden items-center justify-center p-4">
+        <div class="bg-[#131722] border border-[#2a2e39] rounded-xl max-w-lg w-full p-5 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-[#2a2e39] pb-3 mb-3">
+                <h3 class="text-base font-bold text-white">匯入自訂歷史 K 線數據 (CSV / JSON)</h3>
+                <button id="closeImportModalBtn" class="text-slate-400 hover:text-white text-lg cursor-pointer">✕</button>
+            </div>
+            <p class="text-xs text-slate-400 mb-2 leading-relaxed">
+                請貼上 CSV 格式（欄位順序：<code class="text-blue-400">日期,開盤,最高,最低,收盤,成交量</code>，首行可含標題）或 JSON 陣列，即可使用真實歷史數據進行走圖訓練：
+            </p>
+            <textarea id="customDataTextarea" rows="7" placeholder="2025-01-02,1065,1075,1055,1065,42150
+2025-01-03,1070,1085,1065,1075,38920
+2025-01-06,1090,1125,1085,1125,68400"
+                class="w-full bg-[#0f131a] border border-[#2a2e39] rounded-lg p-3 text-xs font-mono-num text-slate-200 focus:border-blue-500 focus:outline-none mb-3"></textarea>
+            <div class="flex justify-end gap-2">
+                <button id="cancelImportBtn" class="px-4 py-2 rounded-lg bg-[#1e222d] text-slate-300 text-xs hover:bg-[#2a2e39] cursor-pointer">取消</button>
+                <button id="confirmImportBtn" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 cursor-pointer">確認匯入並開始走圖</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ============================================================================
+         * 台股 K 棒走圖練習與模擬交易系統 - 核心邏輯與 Canvas 繪圖引擎
+         * ============================================================================
+         */
+
+        // 1. 內建台股基本資料庫（用於對應股名、基準價格與波動特性）
+        const STOCK_PROFILES = {
+            '2330': { name: '台積電', basePrice: 1020, volatility: 0.021, avgVol: 38000 },
+            '2454': { name: '聯發科', basePrice: 1320, volatility: 0.025, avgVol: 9500 },
+            '2327': { name: '國巨',   basePrice: 580,  volatility: 0.026, avgVol: 6200 },
+            '2408': { name: '南亞科', basePrice: 48.5, volatility: 0.032, avgVol: 28000 },
+            '2603': { name: '長榮',   basePrice: 205,  volatility: 0.030, avgVol: 32000 },
+            '0050': { name: '元大台灣50', basePrice: 192, volatility: 0.014, avgVol: 14000 },
+            '2317': { name: '鴻海',   basePrice: 185,  volatility: 0.024, avgVol: 55000 },
+            '2382': { name: '廣達',   basePrice: 285,  volatility: 0.028, avgVol: 26000 },
+            '3231': { name: '緯創',   basePrice: 112,  volatility: 0.029, avgVol: 42000 },
+            '2881': { name: '富邦金', basePrice: 88.5, volatility: 0.016, avgVol: 22000 }
+        };
+
+        // 2. 系統全域狀態管理
+        const state = {
+            stockCode: '2330',
+            stockName: '台積電',
+            allBars: [],           // 完整歷史 K 棒陣列 [{date, open, high, low, close, volume, ma5, ma10, ma20}, ...]
+            currentIndex: 0,       // 目前走圖進度索引（使用者只能看到 0 ~ currentIndex 的 K 棒）
+            viewEndIndex: 0,       // 畫布目前顯示的最右側 K 棒索引（支援往回捲動查看歷史）
+            visibleCount: 45,      // 畫布單一畫面顯示的 K 棒數量（可用滾輪縮放）
+            hoverIndex: -1,        // 滑鼠懸停在畫布上的 K 棒索引
+            isDragging: false,     // 是否正在拖曳畫布回看歷史
+            dragStartX: 0,
+            dragStartViewEnd: 0,
+            autoPlayTimer: null,
+
+            // 交易與帳戶部位狀態
+            positionLots: 0,       // 持有張數
+            totalCostBasis: 0,     // 持有部位總成本（含買進手續費）
+            realizedPnL: 0,        // 已實現損益
+            trades: []             // 交易紀錄 [{id, barIndex, date, side, price, lots, amount, fee, tax, netCash, pnl}]
+        };
+
+        // DOM 元素快取
+        const canvas = document.getElementById('klineCanvas');
+        const ctx = canvas.getContext('2d');
+        const chartContainer = document.getElementById('chartContainer');
+
+        // ============================================================================
+        // 工具函式：台股跳動單位 (Tick Size) 與確定性亂數產生器
+        // ============================================================================
+        function roundToTwTick(price) {
+            if (price < 10) return Math.round(price * 100) / 100;
+            if (price < 50) return Math.round(price * 20) / 20;     // 0.05
+            if (price < 100) return Math.round(price * 10) / 10;    // 0.1
+            if (price < 500) return Math.round(price * 2) / 2;      // 0.5
+            if (price < 1000) return Math.round(price);              // 1
+            return Math.round(price / 5) * 5;                       // 5
+        }
+
+        // 根據股票代號字串產生確定性 Seed（確保同一代號與日期區間每次產生一致的走勢供反覆練習）
+        function createSeededRandom(seedStr) {
+            let h = 2166136261 >>> 0;
+            for (let i = 0; i < seedStr.length; i++) {
+                h ^= seedStr.charCodeAt(i);
+                h = Math.imul(h, 16777619);
+            }
+            return function() {
+                h += h << 13; h ^= h >>> 7;
+                h += h << 3;  h ^= h >>> 17;
+                h += h << 5;
+                return (h >>> 0) / 4294967296;
+            };
+        }
+
+        // 顯示頂部訊息提示（取代 alert）
+        function showToast(message, type = 'info') {
+            const banner = document.getElementById('toastBanner');
+            const content = document.getElementById('toastContent');
+            const styles = {
+                info: 'bg-slate-800 border-blue-500/50 text-blue-200',
+                success: 'bg-emerald-950 border-emerald-500/60 text-emerald-200',
+                error: 'bg-rose-950 border-rose-500/60 text-rose-200',
+                warn: 'bg-amber-950 border-amber-500/60 text-amber-200'
+            };
+            content.className = `px-4 py-2.5 rounded-lg shadow-2xl border text-sm font-medium flex items-center gap-2 ${styles[type] || styles.info}`;
+            content.textContent = message;
+            banner.classList.remove('hidden');
+            clearTimeout(banner._timer);
+            banner._timer = setTimeout(() => banner.classList.add('hidden'), 3200);
+        }
+
+        // ============================================================================
+        // 歷史 K 棒數據生成器（含波段趨勢、盤整、突破與量價結構）
+        // ============================================================================
+        function generateStockData(code, startDateStr, endDateStr) {
+            const profile = STOCK_PROFILES[code] || {
+                name: `台股 ${code}`,
+                basePrice: (parseInt(code.replace(/\D/g, '') || '100', 10) % 450) + 35,
+                volatility: 0.025,
+                avgVol: 15000
+            };
+            state.stockName = profile.name;
+
+            const start = new Date(startDateStr);
+            const end = new Date(endDateStr);
+            if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
+                showToast('請確認起始日期早於結束日期！', 'error');
+                return [];
+            }
+
+            // 為了讓起始日就有完整的 20MA，往前多生成 25 個交易日作為暖機期
+            const warmupStart = new Date(start);
+            warmupStart.setDate(warmupStart.getDate() - 40);
+
+            const rand = createSeededRandom(`${code}_${startDateStr}_${endDateStr}`);
+            const rawBars = [];
+            let prevClose = profile.basePrice;
+            let regimeDays = 0;
+            let trendBias = 0; // 波段趨勢偏移
+
+            for (let d = new Date(warmupStart); d <= end; d.setDate(d.getDate() + 1)) {
+                const day = d.getDay();
+                if (day === 0 || day === 6) continue; // 跳過週末
+
+                // 每 12~25 個交易日切換一次市場狀態（多頭波段 / 空頭修正 / 箱型盤整）
+                if (regimeDays <= 0) {
+                    regimeDays = Math.floor(rand() * 14) + 12;
+                    const r = rand();
+                    if (r < 0.38) trendBias = 0.0035;       // 多頭推升
+                    else if (r < 0.72) trendBias = -0.0032; // 空頭回檔
+                    else trendBias = 0;                     // 橫盤整理
+                }
+                regimeDays--;
+
+                // 跳空開盤模擬
+                const gap = (rand() - 0.5) * profile.volatility * 0.6;
+                let open = roundToTwTick(prevClose * (1 + gap));
+
+                // 日內漲跌幅（限制在台股 ±10% 漲跌幅內）
+                const maxUp = roundToTwTick(prevClose * 1.10);
+                const maxDown = roundToTwTick(prevClose * 0.90);
+                open = Math.min(maxUp, Math.max(maxDown, open));
+
+                const dailyMove = (rand() - 0.48 + trendBias * 8) * profile.volatility;
+                let close = roundToTwTick(open * (1 + dailyMove));
+                close = Math.min(maxUp, Math.max(maxDown, close));
+
+                // 上下影線
+                const upperShadow = Math.abs(rand() * profile.volatility * 0.65 * prevClose);
+                const lowerShadow = Math.abs(rand() * profile.volatility * 0.65 * prevClose);
+                let high = roundToTwTick(Math.max(open, close) + upperShadow);
+                let low = roundToTwTick(Math.min(open, close) - lowerShadow);
+                high = Math.min(maxUp, high);
+                low = Math.max(maxDown, low);
+
+                // 成交量（價格波動越大，量能越放大）
+                const priceSwingRatio = Math.abs(close - open) / prevClose / profile.volatility;
+                const volume = Math.max(300, Math.round(profile.avgVol * (0.55 + rand() * 0.7 + priceSwingRatio * 0.8)));
+
+                const yyyy = d.getFullYear();
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+
+                rawBars.push({
+                    date: `${yyyy}-${mm}-${dd}`,
+                    open, high, low, close, volume
+                });
+                prevClose = close;
+            }
+
+            // 計算移動平均線 (5MA, 10MA, 20MA)
+            computeMovingAverages(rawBars);
+
+            // 過濾出使用者指定的日期區間
+            const filtered = rawBars.filter(b => b.date >= startDateStr && b.date <= endDateStr);
+            return filtered;
+        }
+
+        function computeMovingAverages(bars) {
+            for (let i = 0; i < bars.length; i++) {
+                bars[i].ma5 = i >= 4 ? bars.slice(i - 4, i + 1).reduce((s, b) => s + b.close, 0) / 5 : null;
+                bars[i].ma10 = i >= 9 ? bars.slice(i - 9, i + 1).reduce((s, b) => s + b.close, 0) / 10 : null;
+                bars[i].ma20 = i >= 19 ? bars.slice(i - 19, i + 1).reduce((s, b) => s + b.close, 0) / 20 : null;
+            }
+        }
+
+        // ============================================================================
+        // 初始化 / 載入走圖資料
+        // ============================================================================
+        function initSimulation(customBars = null) {
+            stopAutoPlay();
+            const code = document.getElementById('stockCodeInput').value.trim().toUpperCase() || '2330';
+            const startStr = document.getElementById('startDateInput').value;
+            const endStr = document.getElementById('endDateInput').value;
+            state.stockCode = code;
+
+            // 若為 ETF (00 開頭)，自動切換證交稅為 0.1%
+            if (code.startsWith('00')) {
+                document.getElementById('taxRateSelect').value = '0.001';
+            } else {
+                document.getElementById('taxRateSelect').value = '0.003';
+            }
+
+            const bars = customBars || generateStockData(code, startStr, endStr);
+            if (!bars || bars.length < 5) {
+                showToast('區間內有效交易日不足（至少需 5 根 K 棒），請擴大日期範圍！', 'error');
+                return;
+            }
+
+            state.allBars = bars;
+            // 預設先顯示前 15 根 K 棒作為暖身基底，讓使用者有技術型態可判斷，之後逐根走圖
+            const initialReveal = Math.min(15, Math.floor(bars.length / 3));
+            state.currentIndex = Math.max(0, initialReveal - 1);
+            state.viewEndIndex = state.currentIndex;
+            state.hoverIndex = -1;
+
+            // 重置交易部位與明細
+            state.positionLots = 0;
+            state.totalCostBasis = 0;
+            state.realizedPnL = 0;
+            state.trades = [];
+
+            document.getElementById('displayStockTitle').textContent = `${state.stockCode} ${state.stockName}`;
+            updateSliderBounds();
+            syncOrderPriceWithCurrentBar();
+            updateAllUI();
+            showToast(`已載入 ${state.stockCode} ${state.stockName}（共 ${bars.length} 個交易日），請開始走圖！`, 'success');
+        }
+
+        // ============================================================================
+        // 走圖控制邏輯（前進、後退、自動播放、歷史滑桿）
+        // ============================================================================
+        function stepNextBar() {
+            if (state.currentIndex >= state.allBars.length - 1) {
+                stopAutoPlay();
+                showToast('已到達設定區間的最後一根 K 棒！', 'warn');
+                return;
+            }
+            state.currentIndex++;
+            state.viewEndIndex = state.currentIndex; // 自動跟隨最新 K 棒
+            updateSliderBounds();
+            syncOrderPriceWithCurrentBar();
+            updateAllUI();
+        }
+
+        function stepPrevBar() {
+            if (state.currentIndex <= 0) {
+                showToast('已經是第一根 K 棒了！', 'warn');
+                return;
+            }
+            state.currentIndex--;
+            state.viewEndIndex = state.currentIndex;
+            updateSliderBounds();
+            syncOrderPriceWithCurrentBar();
+            updateAllUI();
+        }
+
+        function toggleAutoPlay() {
+            if (state.autoPlayTimer) {
+                stopAutoPlay();
+            } else {
+                const speed = parseInt(document.getElementById('playSpeedSelect').value, 10);
+                document.getElementById('autoPlayIcon').textContent = '⏸';
+                document.getElementById('autoPlayText').textContent = '暫停走圖';
+                state.autoPlayTimer = setInterval(stepNextBar, speed);
+            }
+        }
+
+        function stopAutoPlay() {
+            if (state.autoPlayTimer) {
+                clearInterval(state.autoPlayTimer);
+                state.autoPlayTimer = null;
+            }
+            document.getElementById('autoPlayIcon').textContent = '▶';
+            document.getElementById('autoPlayText').textContent = '自動走圖';
+        }
+
+        function updateSliderBounds() {
+            const slider = document.getElementById('historyScrollSlider');
+            slider.min = 0;
+            slider.max = state.currentIndex;
+            slider.value = state.viewEndIndex;
+        }
+
+        // ============================================================================
+        // 台股交易成本與買賣損益精算引擎
+        // ============================================================================
+        function getFeeDiscount() {
+            const val = parseFloat(document.getElementById('feeDiscountInput').value);
+            return isNaN(val) || val <= 0 ? 1 : val / 10; // 例如 2.8 折 -> 0.28
+        }
+
+        function getTaxRate() {
+            return parseFloat(document.getElementById('taxRateSelect').value) || 0.003;
+        }
+
+        // 計算台股手續費（0.1425% * 折數，最低 20 元，無條件捨去至整數）
+        function calculateFee(amount) {
+            const rawFee = Math.floor(amount * 0.001425 * getFeeDiscount());
+            return Math.max(20, rawFee);
+        }
+
+        // 計算台股證交稅（賣出價金 * 稅率，無條件捨去至整數）
+        function calculateTax(amount) {
+            return Math.floor(amount * getTaxRate());
+        }
+
+        // 同步最新 K 棒收盤價至定價輸入框
+        function syncOrderPriceWithCurrentBar() {
+            const bar = state.allBars[state.currentIndex];
+            if (!bar) return;
+            document.getElementById('orderPriceInput').value = bar.close;
+            document.getElementById('priceRangeHint').textContent = `當日高低: ${bar.low} ~ ${bar.high}`;
+            document.getElementById('currentTradeDateBadge').textContent = bar.date;
+            updateOrderPreviewCalc();
+        }
+
+        // 即時更新下單試算金額與預估損益
+        function updateOrderPreviewCalc() {
+            const price = parseFloat(document.getElementById('orderPriceInput').value) || 0;
+            const lots = parseInt(document.getElementById('orderLotsInput').value, 10) || 0;
+            const shares = lots * 1000;
+            const amount = Math.round(price * shares);
+
+            const buyFee = amount > 0 ? calculateFee(amount) : 0;
+            const buyTotal = amount + buyFee;
+
+            const sellFee = amount > 0 ? calculateFee(amount) : 0;
+            const sellTax = amount > 0 ? calculateTax(amount) : 0;
+            const sellNet = Math.max(0, amount - sellFee - sellTax);
+
+            document.getElementById('calcShares').textContent = `${shares.toLocaleString()} 股`;
+            document.getElementById('calcBuyTotal').textContent = `$${buyTotal.toLocaleString()}`;
+            document.getElementById('calcSellNet').textContent = `$${sellNet.toLocaleString()}`;
+
+            // 若目前有庫存，計算以此委託價賣出對應張數的預估淨損益
+            const estEl = document.getElementById('calcEstProfit');
+            if (state.positionLots > 0 && lots > 0 && price > 0) {
+                const sellableLots = Math.min(lots, state.positionLots);
+                const sellableAmount = Math.round(price * sellableLots * 1000);
+                const netProceeds = sellableAmount - calculateFee(sellableAmount) - calculateTax(sellableAmount);
+                const proportionalCost = (state.totalCostBasis / state.positionLots) * sellableLots;
+                const estProfit = Math.round(netProceeds - proportionalCost);
+                const roi = proportionalCost > 0 ? (estProfit / proportionalCost) * 100 : 0;
+
+                const sign = estProfit > 0 ? '+' : '';
+                estEl.textContent = `${sign}$${estProfit.toLocaleString()} (${sign}${roi.toFixed(2)}%)`;
+                estEl.className = `font-mono-num font-bold text-sm ${estProfit > 0 ? 'text-red-400' : estProfit < 0 ? 'text-emerald-400' : 'text-slate-300'}`;
+            } else {
+                estEl.textContent = '$0 (0.00%)';
+                estEl.className = 'font-mono-num font-bold text-sm text-slate-400';
+            }
+        }
+
+        // 執行買進或賣出委託
+        function executeOrder(side) {
+            const bar = state.allBars[state.currentIndex];
+            if (!bar) return;
+
+            const price = parseFloat(document.getElementById('orderPriceInput').value);
+            const lots = parseInt(document.getElementById('orderLotsInput').value, 10);
+            const strictRange = document.getElementById('strictRangeCheck').checked;
+
+            if (isNaN(price) || price <= 0) {
+                showToast('請輸入有效的買賣定價！', 'error');
+                return;
+            }
+            if (isNaN(lots) || lots <= 0) {
+                showToast('交易張數至少需為 1 張！', 'error');
+                return;
+            }
+            if (strictRange && (price < bar.low || price > bar.high)) {
+                showToast(`定價 ${price} 超出當日高低點區間 (${bar.low} ~ ${bar.high})，無法成交！`, 'warn');
+                return;
+            }
+
+            const shares = lots * 1000;
+            const amount = Math.round(price * shares);
+            const fee = calculateFee(amount);
+
+            if (side === 'BUY') {
+                const totalCashOut = amount + fee;
+                state.positionLots += lots;
+                state.totalCostBasis += totalCashOut;
+
+                state.trades.push({
+                    id: state.trades.length + 1,
+                    barIndex: state.currentIndex,
+                    date: bar.date,
+                    side: 'BUY',
+                    price,
+                    lots,
+                    amount,
+                    fee,
+                    tax: 0,
+                    netCash: -totalCashOut,
+                    pnl: null
+                });
+                showToast(`【買進成交】${bar.date} @ ${price} 元 × ${lots} 張（總支出 $${totalCashOut.toLocaleString()}）`, 'success');
+            } else if (side === 'SELL') {
+                if (state.positionLots < lots) {
+                    showToast(`庫存不足！目前僅持有 ${state.positionLots} 張，無法賣出 ${lots} 張。`, 'error');
+                    return;
+                }
+                const tax = calculateTax(amount);
+                const netCashIn = amount - fee - tax;
+
+                // 計算按比例扣除的持有成本與單筆已實現損益
+                const avgCostPerLot = state.totalCostBasis / state.positionLots;
+                const costRemoved = avgCostPerLot * lots;
+                const tradePnL = Math.round(netCashIn - costRemoved);
+
+                state.positionLots -= lots;
+                state.totalCostBasis = state.positionLots === 0 ? 0 : Math.max(0, state.totalCostBasis - costRemoved);
+                state.realizedPnL += tradePnL;
+
+                state.trades.push({
+                    id: state.trades.length + 1,
+                    barIndex: state.currentIndex,
+                    date: bar.date,
+                    side: 'SELL',
+                    price,
+                    lots,
+                    amount,
+                    fee,
+                    tax,
+                    netCash: netCashIn,
+                    pnl: tradePnL
+                });
+                const pnlText = tradePnL >= 0 ? `獲利 +$${tradePnL.toLocaleString()}` : `虧損 -$${Math.abs(tradePnL).toLocaleString()}`;
+                showToast(`【賣出成交】${bar.date} @ ${price} 元 × ${lots} 張（${pnlText}）`, tradePnL >= 0 ? 'success' : 'warn');
+            }
+
+            updateAllUI();
+        }
+
+        // ============================================================================
+        // 更新右側損益面板、明細表格與頂部資訊列
+        // ============================================================================
+        function updateAllUI() {
+            const currentBar = state.allBars[state.currentIndex];
+            document.getElementById('progressText').textContent = `${state.currentIndex + 1} / ${state.allBars.length}`;
+
+            // 1. 更新部位與未實現損益（以目前走到的 K 棒收盤價估算）
+            document.getElementById('posLots').textContent = `${state.positionLots} 張`;
+            const avgPrice = state.positionLots > 0 ? (state.totalCostBasis / (state.positionLots * 1000)) : 0;
+            document.getElementById('posAvgCost').textContent = avgPrice.toFixed(2);
+
+            let unrealized = 0;
+            let unrealizedPct = 0;
+            if (state.positionLots > 0 && currentBar) {
+                const marketVal = Math.round(currentBar.close * state.positionLots * 1000);
+                const estLiquidation = marketVal - calculateFee(marketVal) - calculateTax(marketVal);
+                unrealized = Math.round(estLiquidation - state.totalCostBasis);
+                unrealizedPct = state.totalCostBasis > 0 ? (unrealized / state.totalCostBasis) * 100 : 0;
+            }
+
+            const unEl = document.getElementById('unrealizedPnL');
+            const unSign = unrealized > 0 ? '+' : '';
+            unEl.textContent = `${unSign}$${unrealized.toLocaleString()} (${unSign}${unrealizedPct.toFixed(2)}%)`;
+            unEl.className = `text-base font-mono-num mt-0.5 block ${unrealized > 0 ? 'text-red-400' : unrealized < 0 ? 'text-emerald-400' : 'text-slate-200'}`;
+
+            const reEl = document.getElementById('realizedPnL');
+            const reSign = state.realizedPnL > 0 ? '+' : '';
+            reEl.textContent = `${reSign}$${state.realizedPnL.toLocaleString()}`;
+            reEl.className = `text-base font-mono-num mt-0.5 block ${state.realizedPnL > 0 ? 'text-red-400' : state.realizedPnL < 0 ? 'text-emerald-400' : 'text-slate-200'}`;
+
+            const total = state.realizedPnL + unrealized;
+            const totEl = document.getElementById('totalPnL');
+            const totSign = total > 0 ? '+' : '';
+            totEl.textContent = `${totSign}$${total.toLocaleString()}`;
+            totEl.className = `text-xl font-bold font-mono-num ${total > 0 ? 'text-red-400' : total < 0 ? 'text-emerald-400' : 'text-white'}`;
+
+            // 2. 更新交易明細表
+            renderTradeTable();
+            updateOrderPreviewCalc();
+
+            // 3. 更新頂部 OHLCV 資訊（預設顯示懸停 K 棒，否則顯示最新 K 棒）
+            const inspectIdx = (state.hoverIndex >= 0 && state.hoverIndex <= state.currentIndex) ? state.hoverIndex : state.currentIndex;
+            updateTopBarInfo(inspectIdx);
+
+            // 4. 重繪 Canvas
+            drawChart();
+        }
+
+        function updateTopBarInfo(idx) {
+            const bar = state.allBars[idx];
+            if (!bar) return;
+            const prevBar = idx > 0 ? state.allBars[idx - 1] : null;
+            const diff = prevBar ? bar.close - prevBar.close : 0;
+            const diffPct = prevBar ? (diff / prevBar.close) * 100 : 0;
+
+            const colorClass = diff > 0 ? 'text-red-400' : diff < 0 ? 'text-emerald-400' : 'text-slate-200';
+            const sign = diff > 0 ? '+' : '';
+
+            document.getElementById('infoDate').textContent = bar.date;
+            document.getElementById('infoOpen').textContent = bar.open;
+            document.getElementById('infoHigh').textContent = bar.high;
+            document.getElementById('infoLow').textContent = bar.low;
+            document.getElementById('infoClose').textContent = bar.close;
+            document.getElementById('infoClose').className = colorClass;
+
+            const chgEl = document.getElementById('infoChange');
+            chgEl.textContent = prevBar ? `${sign}${diff.toFixed(2)} (${sign}${diffPct.toFixed(2)}%)` : '0.00 (0.00%)';
+            chgEl.className = colorClass;
+
+            document.getElementById('infoVol').textContent = `${bar.volume.toLocaleString()} 張`;
+        }
+
+        function renderTradeTable() {
+            const tbody = document.getElementById('tradeHistoryBody');
+            document.getElementById('tradeCountBadge').textContent = `${state.trades.length} 筆`;
+
+            if (state.trades.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="10" class="py-6 text-center text-slate-500 font-sans">尚無交易紀錄，請於上方設定價格與張數後點擊「買進」或「賣出」</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = [...state.trades].reverse().map(t => {
+                const isBuy = t.side === 'BUY';
+                const sideBadge = isBuy
+                    ? `<span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-bold font-sans">買進</span>`
+                    : `<span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold font-sans">賣出</span>`;
+
+                let pnlCell = `<span class="text-slate-500">--</span>`;
+                if (t.pnl !== null) {
+                    const sign = t.pnl > 0 ? '+' : '';
+                    const cls = t.pnl > 0 ? 'text-red-400 font-bold' : t.pnl < 0 ? 'text-emerald-400 font-bold' : 'text-slate-300';
+                    pnlCell = `<span class="${cls}">${sign}$${t.pnl.toLocaleString()}</span>`;
+                }
+
+                return `
+                    <tr class="hover:bg-[#1e222d]/60 transition">
+                        <td class="py-2 px-4 text-slate-400">#${t.id}</td>
+                        <td class="py-2 px-4 text-slate-200">${t.date}</td>
+                        <td class="py-2 px-4">${sideBadge}</td>
+                        <td class="py-2 px-4 text-right text-white font-semibold">${t.price}</td>
+                        <td class="py-2 px-4 text-right text-slate-200">${t.lots}</td>
+                        <td class="py-2 px-4 text-right text-slate-300">$${t.amount.toLocaleString()}</td>
+                        <td class="py-2 px-4 text-right text-slate-400">$${t.fee.toLocaleString()}</td>
+                        <td class="py-2 px-4 text-right text-slate-400">$${t.tax.toLocaleString()}</td>
+                        <td class="py-2 px-4 text-right ${isBuy ? 'text-red-300' : 'text-emerald-300'}">${t.netCash > 0 ? '+' : ''}$${t.netCash.toLocaleString()}</td>
+                        <td class="py-2 px-4 text-right">${pnlCell}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // ============================================================================
+        // HTML5 Canvas 高清晰度 K 線、均線、成交量與買賣點標記繪圖引擎
+        // ============================================================================
+        function resizeCanvas() {
+            const rect = chartContainer.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            drawChart();
+        }
+
+        function drawChart() {
+            const width = chartContainer.clientWidth;
+            const height = chartContainer.clientHeight;
+            ctx.clearRect(0, 0, width, height);
+
+            if (!state.allBars.length) return;
+
+            // 版面配置邊界
+            const padLeft = 14;
+            const padRight = 64; // 右側留給 Y 軸價格刻度
+            const padTop = 22;
+            const padBottom = 24; // 底部留給日期 X 軸
+            const gapBetweenMainAndVol = 14;
+
+            const plotWidth = width - padLeft - padRight;
+            const totalPlotHeight = height - padTop - padBottom;
+            const mainHeight = Math.floor(totalPlotHeight * 0.74);
+            const volTop = padTop + mainHeight + gapBetweenMainAndVol;
+            const volHeight = totalPlotHeight - mainHeight - gapBetweenMainAndVol;
+
+            // 計算目前視窗顯示的 K 棒範圍（嚴格限制最大索引不超過 state.currentIndex，避免洩漏未來走勢）
+            const endIdx = Math.min(state.viewEndIndex, state.currentIndex);
+            const startIdx = Math.max(0, endIdx - state.visibleCount + 1);
+            const slice = state.allBars.slice(startIdx, endIdx + 1);
+            if (!slice.length) return;
+
+            // 計算主圖價格上下界與副圖成交量上界
+            let maxPrice = -Infinity;
+            let minPrice = Infinity;
+            let maxVol = 0;
+
+            const showMA5 = document.getElementById('toggleMA5').checked;
+            const showMA10 = document.getElementById('toggleMA10').checked;
+            const showMA20 = document.getElementById('toggleMA20').checked;
+
+            slice.forEach(b => {
+                maxPrice = Math.max(maxPrice, b.high);
+                minPrice = Math.min(minPrice, b.low);
+                if (showMA5 && b.ma5) { maxPrice = Math.max(maxPrice, b.ma5); minPrice = Math.min(minPrice, b.ma5); }
+                if (showMA10 && b.ma10) { maxPrice = Math.max(maxPrice, b.ma10); minPrice = Math.min(minPrice, b.ma10); }
+                if (showMA20 && b.ma20) { maxPrice = Math.max(maxPrice, b.ma20); minPrice = Math.min(minPrice, b.ma20); }
+                maxVol = Math.max(maxVol, b.volume);
+            });
+
+            const priceMargin = (maxPrice - minPrice) * 0.12 || maxPrice * 0.02;
+            maxPrice += priceMargin;
+            minPrice = Math.max(0, minPrice - priceMargin);
+            const priceSpan = maxPrice - minPrice || 1;
+            maxVol = maxVol * 1.15 || 1;
+
+            // 座標轉換輔助函式
+            const slotWidth = plotWidth / Math.max(slice.length, 10); // 保留最小間距讓初期少根K棒時不會過寬
+            const candleWidth = Math.max(3, Math.min(22, slotWidth * 0.68));
+            const getX = (i) => padLeft + (i + 0.5) * slotWidth;
+            const getYPrice = (p) => padTop + ((maxPrice - p) / priceSpan) * mainHeight;
+            const getYVol = (v) => volTop + volHeight - (v / maxVol) * volHeight;
+
+            // 1. 繪製背景水平網格線與右側價格刻度
+            ctx.strokeStyle = '#1e222d';
+            ctx.lineWidth = 1;
+            ctx.font = '11px "JetBrains Mono", monospace';
+            ctx.fillStyle = '#787b86';
+            ctx.textAlign = 'left';
+
+            const gridRows = 5;
+            for (let g = 0; g <= gridRows; g++) {
+                const y = padTop + (mainHeight / gridRows) * g;
+                const priceLabel = maxPrice - (priceSpan / gridRows) * g;
+                ctx.beginPath();
+                ctx.moveTo(padLeft, y);
+                ctx.lineTo(width - padRight, y);
+                ctx.stroke();
+
+                ctx.fillText(priceLabel.toFixed(priceLabel >= 100 ? 1 : 2), width - padRight + 6, y + 4);
+            }
+
+            // 成交量分隔線與最大量標籤
+            ctx.beginPath();
+            ctx.moveTo(padLeft, volTop);
+            ctx.lineTo(width - padRight, volTop);
+            ctx.stroke();
+            ctx.fillText(`${Math.round(maxVol / 1000)}K`, width - padRight + 6, volTop + 10);
+
+            // 2. 繪製 K 棒實體、影線與成交量柱狀圖（台股：紅漲、綠跌）
+            const upColor = '#ef4444';   // 紅 K
+            const downColor = '#10b981'; // 綠 K
+            const flatColor = '#94a3b8'; // 平盤
+
+            slice.forEach((b, i) => {
+                const x = getX(i);
+                const isUp = b.close > b.open;
+                const isDown = b.close < b.open;
+                const color = isUp ? upColor : isDown ? downColor : flatColor;
+
+                // 繪製上下影線
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.3;
+                ctx.beginPath();
+                ctx.moveTo(x, getYPrice(b.high));
+                ctx.lineTo(x, getYPrice(b.low));
+                ctx.stroke();
+
+                // 繪製 K 棒實體
+                const yOpen = getYPrice(b.open);
+                const yClose = getYPrice(b.close);
+                const bodyTop = Math.min(yOpen, yClose);
+                const bodyHeight = Math.max(1.5, Math.abs(yClose - yOpen));
+
+                ctx.fillStyle = color;
+                ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+
+                // 繪製成交量柱
+                const yVol = getYVol(b.volume);
+                ctx.fillStyle = isUp ? 'rgba(239, 68, 68, 0.55)' : isDown ? 'rgba(16, 185, 129, 0.55)' : 'rgba(148, 163, 184, 0.55)';
+                ctx.fillRect(x - candleWidth / 2, yVol, candleWidth, volTop + volHeight - yVol);
+
+                // 繪製底部日期刻度（每隔幾根顯示一次避免重疊）
+                const step = Math.max(1, Math.floor(slice.length / 6));
+                if (i % step === 0) {
+                    ctx.fillStyle = '#64748b';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(b.date.slice(5), x, height - 6);
+                }
+            });
+
+            // 3. 繪製移動平均線 (5MA / 10MA / 20MA)
+            const drawMA = (key, color) => {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                let started = false;
+                slice.forEach((b, i) => {
+                    if (b[key] !== null) {
+                        const x = getX(i);
+                        const y = getYPrice(b[key]);
+                        if (!started) { ctx.moveTo(x, y); started = true; }
+                        else { ctx.lineTo(x, y); }
+                    }
+                });
+                ctx.stroke();
+            };
+            if (showMA5) drawMA('ma5', '#fbbf24');
+            if (showMA10) drawMA('ma10', '#38bdf8');
+            if (showMA20) drawMA('ma20', '#c084fc');
+
+            // 4. 在圖表上標記「買進點 (B)」與「賣出點 (S)」
+            state.trades.forEach(t => {
+                if (t.barIndex >= startIdx && t.barIndex <= endIdx) {
+                    const localIdx = t.barIndex - startIdx;
+                    const bar = slice[localIdx];
+                    const x = getX(localIdx);
+                    const isBuy = t.side === 'BUY';
+
+                    if (isBuy) {
+                        const y = getYPrice(bar.low) + 14;
+                        // 向上紅色箭頭與 B 標籤
+                        ctx.fillStyle = '#ef4444';
+                        ctx.beginPath();
+                        ctx.moveTo(x, y - 8);
+                        ctx.lineTo(x - 5, y);
+                        ctx.lineTo(x + 5, y);
+                        ctx.closePath();
+                        ctx.fill();
+
+                        ctx.font = 'bold 10px "JetBrains Mono", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(`B ${t.price}`, x, y + 11);
+                    } else {
+                        const y = getYPrice(bar.high) - 14;
+                        // 向下綠色箭頭與 S 標籤
+                        ctx.fillStyle = '#10b981';
+                        ctx.beginPath();
+                        ctx.moveTo(x, y + 8);
+                        ctx.lineTo(x - 5, y);
+                        ctx.lineTo(x + 5, y);
+                        ctx.closePath();
+                        ctx.fill();
+
+                        ctx.font = 'bold 10px "JetBrains Mono", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(`S ${t.price}`, x, y - 4);
+                    }
+                }
+            });
+
+            // 5. 繪製持有均價成本虛線（若有庫存）
+            if (state.positionLots > 0) {
+                const avgPrice = state.totalCostBasis / (state.positionLots * 1000);
+                if (avgPrice >= minPrice && avgPrice <= maxPrice) {
+                    const yCost = getYPrice(avgPrice);
+                    ctx.save();
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeStyle = '#f59e0b';
+                    ctx.lineWidth = 1.2;
+                    ctx.beginPath();
+                    ctx.moveTo(padLeft, yCost);
+                    ctx.lineTo(width - padRight, yCost);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    ctx.fillStyle = '#f59e0b';
+                    ctx.fillRect(width - padRight, yCost - 9, padRight - 2, 18);
+                    ctx.fillStyle = '#000000';
+                    ctx.font = 'bold 10px "JetBrains Mono", monospace';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(avgPrice.toFixed(1), width - padRight + 4, yCost + 3.5);
+                }
+            }
+
+            // 6. 繪製滑鼠十字準星與游標價格標籤
+            if (state.hoverIndex >= startIdx && state.hoverIndex <= endIdx) {
+                const localIdx = state.hoverIndex - startIdx;
+                const hoverBar = slice[localIdx];
+                const hx = getX(localIdx);
+                const hy = getYPrice(hoverBar.close);
+
+                ctx.save();
+                ctx.setLineDash([3, 3]);
+                ctx.strokeStyle = 'rgba(226, 232, 240, 0.45)';
+                ctx.lineWidth = 1;
+
+                // 垂直線
+                ctx.beginPath();
+                ctx.moveTo(hx, padTop);
+                ctx.lineTo(hx, height - padBottom);
+                ctx.stroke();
+
+                // 水平線
+                ctx.beginPath();
+                ctx.moveTo(padLeft, hy);
+                ctx.lineTo(width - padRight, hy);
+                ctx.stroke();
+                ctx.restore();
+
+                // 右側游標收盤價標籤
+                ctx.fillStyle = '#3b82f6';
+                ctx.fillRect(width - padRight, hy - 9, padRight - 2, 18);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px "JetBrains Mono", monospace';
+                ctx.textAlign = 'left';
+                ctx.fillText(hoverBar.close.toFixed(hoverBar.close >= 100 ? 1 : 2), width - padRight + 4, hy + 3.5);
+            }
+
+            // 儲存幾何參數供滑鼠互動計算使用
+            canvas._geom = { padLeft, padRight, slotWidth, startIdx, endIdx, sliceLength: slice.length };
+        }
+
+        // ============================================================================
+        // 事件監聽器綁定（滑鼠懸停、滾輪縮放、拖曳回看、鍵盤快捷鍵、交易按鈕）
+        // ============================================================================
+        function setupEventListeners() {
+            // 視窗尺寸調整
+            window.addEventListener('resize', resizeCanvas);
+
+            // 股票下拉選單與載入按鈕
+            document.getElementById('presetStockSelect').addEventListener('change', (e) => {
+                document.getElementById('stockCodeInput').value = e.target.value;
+                initSimulation();
+            });
+            document.getElementById('loadDataBtn').addEventListener('click', () => initSimulation());
+            document.getElementById('stockCodeInput').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') initSimulation();
+            });
+
+            // 走圖控制按鈕
+            document.getElementById('nextBarBtn').addEventListener('click', stepNextBar);
+            document.getElementById('prevBarBtn').addEventListener('click', stepPrevBar);
+            document.getElementById('autoPlayBtn').addEventListener('click', toggleAutoPlay);
+            document.getElementById('resetSimBtn').addEventListener('click', () => initSimulation());
+
+            // 均線開關即時重繪
+            ['toggleMA5', 'toggleMA10', 'toggleMA20'].forEach(id => {
+                document.getElementById(id).addEventListener('change', drawChart);
+            });
+
+            // 歷史視窗回看滑桿與「回到最新 K 棒」按鈕
+            document.getElementById('historyScrollSlider').addEventListener('input', (e) => {
+                state.viewEndIndex = parseInt(e.target.value, 10);
+                drawChart();
+            });
+            document.getElementById('jumpToLatestBtn').addEventListener('click', () => {
+                state.viewEndIndex = state.currentIndex;
+                updateSliderBounds();
+                drawChart();
+            });
+
+            // Canvas 滑鼠移動（十字準星與歷史 K 棒資訊檢視）
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const geom = canvas._geom;
+                if (!geom) return;
+
+                if (state.isDragging) {
+                    const dx = mouseX - state.dragStartX;
+                    const barsShift = Math.round(dx / geom.slotWidth);
+                    let newEnd = state.dragStartViewEnd - barsShift;
+                    newEnd = Math.max(Math.min(state.currentIndex, 5), Math.min(state.currentIndex, newEnd));
+                    state.viewEndIndex = newEnd;
+                    document.getElementById('historyScrollSlider').value = newEnd;
+                    drawChart();
+                    return;
+                }
+
+                const localIdx = Math.floor((mouseX - geom.padLeft) / geom.slotWidth);
+                if (localIdx >= 0 && localIdx < geom.sliceLength) {
+                    state.hoverIndex = geom.startIdx + localIdx;
+                    updateTopBarInfo(state.hoverIndex);
+                } else {
+                    state.hoverIndex = -1;
+                    updateTopBarInfo(state.currentIndex);
+                }
+                drawChart();
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                state.isDragging = false;
+                state.hoverIndex = -1;
+                updateTopBarInfo(state.currentIndex);
+                drawChart();
+            });
+
+            // Canvas 滑鼠按住拖曳回看歷史 K 棒
+            canvas.addEventListener('mousedown', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                state.isDragging = true;
+                state.dragStartX = e.clientX - rect.left;
+                state.dragStartViewEnd = state.viewEndIndex;
+            });
+            window.addEventListener('mouseup', () => {
+                state.isDragging = false;
+            });
+
+            // Canvas 滑鼠滾輪縮放顯示 K 棒數量
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 5 : -5;
+                state.visibleCount = Math.max(15, Math.min(180, state.visibleCount + delta));
+                drawChart();
+            }, { passive: false });
+
+            // 鍵盤左右鍵單步走圖
+            window.addEventListener('keydown', (e) => {
+                if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+                if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    stepNextBar();
+                } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    stepPrevBar();
+                }
+            });
+
+            // 快速帶入當日 開/收/高/低 價格按鈕
+            document.getElementById('setOpenPriceBtn').addEventListener('click', () => {
+                const bar = state.allBars[state.currentIndex];
+                if (bar) { document.getElementById('orderPriceInput').value = bar.open; updateOrderPreviewCalc(); }
+            });
+            document.getElementById('setClosePriceBtn').addEventListener('click', () => {
+                const bar = state.allBars[state.currentIndex];
+                if (bar) { document.getElementById('orderPriceInput').value = bar.close; updateOrderPreviewCalc(); }
+            });
+            document.getElementById('setHighPriceBtn').addEventListener('click', () => {
+                const bar = state.allBars[state.currentIndex];
+                if (bar) { document.getElementById('orderPriceInput').value = bar.high; updateOrderPreviewCalc(); }
+            });
+            document.getElementById('setLowPriceBtn').addEventListener('click', () => {
+                const bar = state.allBars[state.currentIndex];
+                if (bar) { document.getElementById('orderPriceInput').value = bar.low; updateOrderPreviewCalc(); }
+            });
+
+            // 快速張數與全數賣出按鈕
+            document.querySelectorAll('.quick-lot-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.getElementById('orderLotsInput').value = btn.dataset.lots;
+                    updateOrderPreviewCalc();
+                });
+            });
+            document.getElementById('sellAllLotsBtn').addEventListener('click', () => {
+                if (state.positionLots > 0) {
+                    document.getElementById('orderLotsInput').value = state.positionLots;
+                    updateOrderPreviewCalc();
+                } else {
+                    showToast('目前尚無持有庫存張數！', 'warn');
+                }
+            });
+
+            // 價格/張數/費率變動即時重算
+            ['orderPriceInput', 'orderLotsInput', 'feeDiscountInput', 'taxRateSelect'].forEach(id => {
+                document.getElementById(id).addEventListener('input', updateOrderPreviewCalc);
+            });
+
+            // 買進與賣出按鈕
+            document.getElementById('buyBtn').addEventListener('click', () => executeOrder('BUY'));
+            document.getElementById('sellBtn').addEventListener('click', () => executeOrder('SELL'));
+
+            // 自訂數據匯入彈窗控制
+            const modal = document.getElementById('importModal');
+            document.getElementById('openImportModalBtn').addEventListener('click', () => {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            });
+            const closeModal = () => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            };
+            document.getElementById('closeImportModalBtn').addEventListener('click', closeModal);
+            document.getElementById('cancelImportBtn').addEventListener('click', closeModal);
+
+            document.getElementById('confirmImportBtn').addEventListener('click', () => {
+                const raw = document.getElementById('customDataTextarea').value.trim();
+                if (!raw) {
+                    showToast('請先貼上 CSV 或 JSON 歷史數據！', 'error');
+                    return;
+                }
+                try {
+                    let parsed = [];
+                    if (raw.startsWith('[')) {
+                        parsed = JSON.parse(raw);
+                    } else {
+                        const lines = raw.split(/\r?\n/).filter(l => l.trim());
+                        for (const line of lines) {
+                            const parts = line.split(',').map(s => s.trim());
+                            if (parts.length < 5 || isNaN(parseFloat(parts[1]))) continue;
+                            parsed.push({
+                                date: parts[0],
+                                open: parseFloat(parts[1]),
+                                high: parseFloat(parts[2]),
+                                low: parseFloat(parts[3]),
+                                close: parseFloat(parts[4]),
+                                volume: parseInt(parts[5] || '10000', 10)
+                            });
+                        }
+                    }
+                    if (parsed.length < 5) {
+                        showToast('解析到的有效 K 棒不足 5 根，請檢查格式！', 'error');
+                        return;
+                    }
+                    computeMovingAverages(parsed);
+                    closeModal();
+                    initSimulation(parsed);
+                } catch (err) {
+                    showToast('數據解析失敗，請確認格式是否正確！', 'error');
+                }
+            });
+        }
+
+        // 啟動應用程式
+        window.onload = function() {
+            setupEventListeners();
+            resizeCanvas();
+            initSimulation();
+        };
+    </script>
+</body>
+</html>
